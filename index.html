@@ -180,10 +180,21 @@ body.gift-mode .resize, body.gift-mode .node-head .x { display: none; }
 .btn.small { min-height: 38px; font-size: 14px; padding: 0 14px; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
-.make-own {
-  position: fixed; z-index: 4; right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-  padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,.86); color: #1b1b1b; font-size: 13px; font-weight: 600; text-decoration: none;
+.btn-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.btn-row .btn:not(.primary) { padding: 0 8px; font-size: 15px; }
+.btn-row .primary { grid-column: 1 / -1; }
+
+.gift-actions {
+  position: fixed; z-index: 4; display: flex; gap: 8px; flex-wrap: wrap; justify-content: flex-end;
+  right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px)); left: max(20px, env(safe-area-inset-left, 0px));
+  pointer-events: none;
 }
+.pill {
+  pointer-events: auto; padding: 8px 14px; border-radius: 999px; border: 0; cursor: pointer;
+  background: rgba(255,255,255,.88); color: #1b1b1b; font: 600 13px var(--ui); text-decoration: none; box-shadow: 0 4px 14px rgba(0,0,0,.1);
+}
+.pill.primary { background: var(--primary); color: var(--primary-ink); }
+.pill:disabled { opacity: .6; cursor: progress; }
 
 /* ---------- left drawer ---------- */
 .drawer-tab {
@@ -273,10 +284,10 @@ body.gift-mode .controls, body.gift-mode .drawer-tab, body.gift-mode .drawer { d
     background: rgba(255,255,255,.92); padding: 10px; border-radius: 14px; box-shadow: 0 8px 30px rgba(0,0,0,.12);
   }
   .bg-swatches { justify-content: start; }
-  .btn-row { display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px; }
+  .btn-row { grid-template-columns: 1fr 1fr 1.4fr; }
+  .btn-row .primary { grid-column: auto; padding: 0 10px; font-size: 15px; }
   .drawer-tab { top: 40%; width: 34px; height: 64px; }
 }
-@media (min-width: 681px) and (min-height: 501px) { .btn-row { display: contents; } }
 
 @media (prefers-reduced-motion: reduce) {
   .wire-flow { animation: none; }
@@ -316,11 +327,15 @@ Add Link to grow the first one</p>
     <div class="bg-swatches" id="bgSwatches" role="group" aria-label="Background color"></div>
     <div class="btn-row">
       <button type="button" class="btn" id="addLinkBtn">Add Link</button>
+      <button type="button" class="btn" id="savePng">Save PNG</button>
       <button type="button" class="btn primary" id="shareBtn">Save &amp; Share &darr;</button>
     </div>
   </div>
 
-  <a class="make-own" id="makeOwn" href="./" hidden>Make your own bouquet</a>
+  <div class="gift-actions" id="giftActions" hidden>
+    <button type="button" class="pill primary" id="savePngGift">Save as PNG &darr;</button>
+    <a class="pill" id="makeOwn" href="./">Make your own bouquet</a>
+  </div>
 </main>
 
 <aside class="drawer" id="drawer" aria-label="Bouquet settings">
@@ -773,14 +788,18 @@ Add Link to grow the first one</p>
         const p = parseLink(l.url);
         if (!p) return;
         const parts = linkBody(l, p);
-        floatsLayer.append(makeNode(parts, { idx: `[${i}]`, tag: p.tag, cmt: l.note }, () => l, q => { l.x = q.x; l.y = q.y; },
-          "flower " + (i + 1), () => { state.links.splice(i, 1); update(); }, shown++));
+        const node = makeNode(parts, { idx: `[${i}]`, tag: p.tag, cmt: l.note }, () => l, q => { l.x = q.x; l.y = q.y; },
+          "flower " + (i + 1), () => { state.links.splice(i, 1); update(); }, shown++);
+        node._item = l;
+        node._p = p;
+        floatsLayer.append(node);
       });
       if (hasCard) {
         const node = makeNode(cardBody(), { idx: "[✉]", tag: "card.note", keepCmt: true },
           () => state.card, q => { state.card.x = q.x; state.card.y = q.y; }, "card",
           () => { state.msg = ""; $("message").value = ""; update(); }, shown++);
         cardEls.cmt = node.querySelector(".cmt");
+        node._card = true;
         floatsLayer.append(node);
       }
       $("ghost").hidden = giftMode || shown > 0;
@@ -948,12 +967,311 @@ Add Link to grow the first one</p>
   document.addEventListener("keydown", e => { if (e.key === "Escape" && !$("lightbox").hidden) closeLightbox(); });
   document.addEventListener("fullscreenchange", () => { if (!document.fullscreenElement) $("lightbox").hidden = true; });
 
+  /* ---------- save as PNG ---------- */
+  // Browsers can't photograph the Spotify or YouTube players, so the picture is redrawn by hand from the
+  // current layout. Each player becomes a card with the cover art and title from the service's public oEmbed lookup.
+  const UI = '"Figtree", system-ui, sans-serif', MONO = '"JetBrains Mono", Consolas, monospace';
+  const HAND = '"Caveat", "Segoe Print", cursive', MARKER = '"Permanent Marker", "Segoe Print", cursive';
+  const OEMBED = {
+    spotify: u => "https://open.spotify.com/oembed?url=" + encodeURIComponent(u),
+    youtube: u => "https://www.youtube.com/oembed?format=json&url=" + encodeURIComponent(u),
+    soundcloud: u => "https://soundcloud.com/oembed?format=json&url=" + encodeURIComponent(u)
+  };
+  const metaCache = new Map();
+  let shadowScale = 1;
+
+  function linkMeta(url, p) {
+    const make = OEMBED[p.kind];
+    if (!make) return Promise.resolve({});
+    // YouTube Music and Shorts links are looked up as plain watch links
+    const id = p.kind === "youtube" && (p.src.match(/embed\/([^?]+)/) || [])[1];
+    const key = id ? "https://www.youtube.com/watch?v=" + id : url;
+    if (!metaCache.has(key)) metaCache.set(key, fetch(make(key)).then(r => r.ok ? r.json() : {}).catch(() => ({})));
+    return metaCache.get(key);
+  }
+
+  // images that refuse cross-origin use come back null, so they never block the export
+  function loadImage(src, cors = true) {
+    return new Promise(res => {
+      if (!src) return res(null);
+      const i = new Image();
+      if (cors) i.crossOrigin = "anonymous";
+      i.onload = () => res(i);
+      i.onerror = () => res(null);
+      i.src = src;
+    });
+  }
+
+  function drawCover(g, img, x, y, w, h) {
+    const k = Math.max(w / img.naturalWidth, h / img.naturalHeight);
+    const sw = w / k, sh = h / k;
+    g.drawImage(img, (img.naturalWidth - sw) / 2, (img.naturalHeight - sh) / 2, sw, sh, x, y, w, h);
+  }
+
+  // a darkened average of the cover art, like the players use for their background
+  function coverTint(img) {
+    try {
+      const c = document.createElement("canvas");
+      c.width = c.height = 1;
+      const x = c.getContext("2d");
+      x.drawImage(img, 0, 0, 1, 1);
+      const d = x.getImageData(0, 0, 1, 1).data;
+      return `rgb(${d[0] * .7 | 0},${d[1] * .7 | 0},${d[2] * .7 | 0})`;
+    } catch (e) { return "#282828"; }
+  }
+
+  function wrapLines(g, text, maxW) {
+    const out = [];
+    String(text).split("\n").forEach(par => {
+      let line = "";
+      par.split(" ").forEach(word => {
+        const test = line ? line + " " + word : word;
+        if (line && g.measureText(test).width > maxW) { out.push(line); line = word; } else line = test;
+      });
+      out.push(line);
+    });
+    return out;
+  }
+
+  function fitText(g, text, maxW) {
+    if (g.measureText(text).width <= maxW) return text;
+    while (text.length > 1 && g.measureText(text + "…").width > maxW) text = text.slice(0, -1);
+    return text + "…";
+  }
+
+  function shadowBox(g, x, y, w, h, r, fill) {
+    g.save();
+    g.shadowColor = "rgba(0,0,0,.2)";
+    g.shadowBlur = 28 * shadowScale;
+    g.shadowOffsetY = 12 * shadowScale;
+    g.fillStyle = fill;
+    g.beginPath(); g.roundRect(x, y, w, h, r); g.fill();
+    g.restore();
+  }
+
+  function playButton(g, cx, cy, r, bg, fg) {
+    g.fillStyle = bg;
+    g.beginPath(); g.arc(cx, cy, r, 0, Math.PI * 2); g.fill();
+    g.fillStyle = fg;
+    g.beginPath(); g.moveTo(cx - r * .3, cy - r * .45); g.lineTo(cx + r * .5, cy); g.lineTo(cx - r * .3, cy + r * .45); g.closePath(); g.fill();
+  }
+
+  async function drawPlayer(g, p, item, x, y, w, h) {
+    const m = await linkMeta(item.url, p);
+    const art = await loadImage(m.thumbnail_url);
+    shadowBox(g, x, y, w, h, 12, "#1f1f1f");
+    g.save();
+    g.beginPath(); g.roundRect(x, y, w, h, 12); g.clip();
+    if (p.kind === "youtube") {
+      g.fillStyle = "#111"; g.fillRect(x, y, w, h);
+      if (art) drawCover(g, art, x, y, w, h);
+      const fade = g.createLinearGradient(0, y, 0, y + 64);
+      fade.addColorStop(0, "rgba(0,0,0,.75)"); fade.addColorStop(1, "rgba(0,0,0,0)");
+      g.fillStyle = fade; g.fillRect(x, y, w, 64);
+      g.fillStyle = "#fff"; g.textBaseline = "top";
+      g.font = `600 ${Math.round(clamp(w / 22, 12, 17))}px ${UI}`;
+      g.fillText(fitText(g, m.title || p.label, w - 28), x + 14, y + 14);
+      const bw = clamp(w * .2, 40, 72), bh = bw * .7, cx = x + w / 2, cy = y + h / 2;
+      g.fillStyle = "#ff0033";
+      g.beginPath(); g.roundRect(cx - bw / 2, cy - bh / 2, bw, bh, bh * .28); g.fill();
+      g.fillStyle = "#fff";
+      g.beginPath(); g.moveTo(cx - bw * .12, cy - bh * .24); g.lineTo(cx + bw * .17, cy); g.lineTo(cx - bw * .12, cy + bh * .24); g.closePath(); g.fill();
+    } else {
+      const brand = { spotify: "#1ed760", soundcloud: "#ff5500", apple: "#fa2d48" }[p.kind];
+      const service = { spotify: "Spotify", soundcloud: "SoundCloud", apple: "Apple Music" }[p.kind];
+      g.fillStyle = art ? coverTint(art) : p.kind === "apple" ? "#3a0d14" : "#282828";
+      g.fillRect(x, y, w, h);
+      const pad = h >= 120 ? 16 : 8, size = Math.min(h - pad * 2, 140);
+      let tx = x + pad + 6;
+      if (art) {
+        g.save();
+        g.beginPath(); g.roundRect(x + pad, y + pad, size, size, 6); g.clip();
+        drawCover(g, art, x + pad, y + pad, size, size);
+        g.restore();
+        tx = x + pad + size + 12;
+      }
+      const right = x + w - 14, room = right - 34 - tx;
+      g.textBaseline = "alphabetic";
+      g.fillStyle = "#fff"; g.font = `700 15px ${UI}`;
+      g.fillText(fitText(g, m.title || item.note || p.label, room), tx, y + pad + 22);
+      g.fillStyle = "rgba(255,255,255,.72)"; g.font = `500 12.5px ${UI}`;
+      g.fillText(fitText(g, m.author_name || service, room), tx, y + pad + 40);
+      g.fillStyle = brand;
+      g.beginPath(); g.arc(right - 6, y + pad + 9, 7, 0, Math.PI * 2); g.fill();
+      playButton(g, right - 14, y + h - pad - 16, 16, "#fff", "#111");
+    }
+    g.restore();
+  }
+
+  function drawCardNote(g, x, y, w, h, el) {
+    shadowBox(g, x, y, w, h, 5, "#fffdf7");
+    const at = cls => y + el.querySelector(cls).offsetTop;
+    const to = (state.greet || "To") + " " + (state.to || "you") + ",";
+    const from = (state.sign || "with love,") + " " + (state.from || "me");
+    g.textBaseline = "middle";
+    g.fillStyle = "#7a6a70"; g.font = `500 19px ${HAND}`;
+    g.fillText(fitText(g, to, w - 40), x + 20, at(".to") + 11.4);
+    g.fillStyle = "#2b2326"; g.font = `500 22px ${HAND}`;
+    wrapLines(g, state.msg.trim(), w - 40).forEach((line, i) => g.fillText(line, x + 20, at(".msg") + 13.2 + i * 26.4));
+    g.fillStyle = "#7a6a70"; g.font = `500 19px ${HAND}`;
+    g.textAlign = "right";
+    g.fillText(fitText(g, from, w - 40), x + w - 20, at(".from") + 11.4);
+    g.textAlign = "left";
+  }
+
+  async function renderPNG() {
+    if (document.fonts) await document.fonts.ready;
+    layoutFloats();
+    const W = view.w, H = view.h, S = Math.min(2, 4000 / Math.max(W, H));
+    shadowScale = S;
+    const c = document.createElement("canvas");
+    c.width = Math.round(W * S);
+    c.height = Math.round(H * S);
+    const g = c.getContext("2d");
+    g.scale(S, S);
+    const css = getComputedStyle(document.documentElement), v = n => css.getPropertyValue(n).trim();
+    const ink = v("--ink"), accent = v("--accent");
+    const toCanvas = r => ({ x: (r.left - view.x) / view.s, y: (r.top - view.y) / view.s, w: r.width / view.s, h: r.height / view.s });
+
+    // backdrop and dot grid
+    g.fillStyle = state.bg; g.fillRect(0, 0, W, H);
+    g.fillStyle = v("--grid");
+    for (let y = 12; y < H; y += 24) for (let x = 12; x < W; x += 24) { g.beginPath(); g.arc(x, y, 1.3, 0, Math.PI * 2); g.fill(); }
+
+    // the hand-drawn bow, rendered from its own SVG
+    const doodle = document.querySelector(".doodle-bow"), db = toCanvas(doodle.getBoundingClientRect());
+    const svgText = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 90" width="${db.w * S}" height="${db.h * S}" style="color:${accent}"><defs>${$("wobble").outerHTML}</defs>${doodle.innerHTML}</svg>`;
+    const bow = await loadImage("data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgText), false);
+    if (bow) g.drawImage(bow, db.x, db.y, db.w, db.h);
+
+    // title
+    const logo = $("logo");
+    if (state.title.trim()) {
+      const fs = parseFloat(getComputedStyle(logo).fontSize);
+      g.save();
+      g.translate(logo.offsetLeft, logo.offsetTop);
+      g.rotate(-4 * Math.PI / 180);
+      g.fillStyle = ink; g.font = `400 ${fs}px ${MARKER}`; g.textBaseline = "middle";
+      wrapLines(g, state.title.trim(), logo.clientWidth - 12).forEach((line, i) => g.fillText(line, 6, 2 + fs * .9 * (i + .5)));
+      g.restore();
+    }
+
+    // wires, redrawn from the live SVG geometry
+    g.lineCap = "round";
+    for (const elm of wires.children) {
+      if (elm.tagName.toLowerCase() === "line") {
+        g.globalAlpha = .55; g.strokeStyle = ink; g.lineWidth = 1.8;
+        g.beginPath(); g.moveTo(+elm.getAttribute("x1"), +elm.getAttribute("y1")); g.lineTo(+elm.getAttribute("x2"), +elm.getAttribute("y2")); g.stroke();
+        continue;
+      }
+      for (const part of elm.children) {
+        const cls = part.getAttribute("class");
+        g.globalAlpha = 1;
+        if (cls === "wire-base") { g.globalAlpha = .28; g.strokeStyle = ink; g.lineWidth = 1.6; g.stroke(new Path2D(part.getAttribute("d"))); }
+        else if (cls === "wire-flow") { g.strokeStyle = accent; g.lineWidth = 1.8; g.setLineDash([2, 10]); g.stroke(new Path2D(part.getAttribute("d"))); g.setLineDash([]); }
+        else if (cls === "commit") { g.fillStyle = ink; g.beginPath(); g.arc(+part.getAttribute("cx"), +part.getAttribute("cy"), 3, 0, Math.PI * 2); g.fill(); }
+        else if (cls === "wire-label") { g.globalAlpha = .55; g.fillStyle = ink; g.font = `600 10px ${MONO}`; g.textBaseline = "alphabetic"; g.fillText(part.textContent, +part.getAttribute("x"), +part.getAttribute("y")); }
+        else if (cls === "port") { g.fillStyle = state.bg; g.strokeStyle = ink; g.lineWidth = 1.6; g.beginPath(); g.arc(+part.getAttribute("cx"), +part.getAttribute("cy"), 4, 0, Math.PI * 2); g.fill(); g.stroke(); }
+      }
+    }
+    g.globalAlpha = 1;
+
+    // root tag
+    const rw = rootEl.offsetWidth, rh = rootEl.offsetHeight;
+    const rx = parseFloat(rootEl.style.left) - rw / 2, ry = parseFloat(rootEl.style.top) - rh / 2;
+    shadowBox(g, rx, ry, rw, rh, 8, ink);
+    g.font = `600 13px ${MONO}`; g.textBaseline = "middle";
+    let tx = rx + 13;
+    const segs = [["<", 1], [state.tag || "Bouquet", 1]];
+    if (state.attr) segs.push([" ", 1], [state.attr, .7], ['="', 1], [state.val, "accent"], ['"', 1]);
+    segs.push([" />", 1]);
+    segs.forEach(([text, look]) => {
+      g.fillStyle = look === "accent" ? accent : state.bg;
+      g.globalAlpha = look === "accent" ? 1 : look;
+      g.fillText(text, tx, ry + rh / 2);
+      tx += g.measureText(text).width;
+    });
+    g.globalAlpha = 1;
+
+    // the flowers
+    for (const n of floatsLayer.querySelectorAll(".node")) {
+      const nx = n.offsetLeft, ny = n.offsetTop;
+      const head = n.querySelector(".node-head"), body = n.querySelector(".node-body");
+      const hx = nx + head.offsetLeft, hy = ny + head.offsetTop;
+      g.fillStyle = v("--chip");
+      g.beginPath(); g.roundRect(hx, hy, head.offsetWidth, head.offsetHeight, 6); g.fill();
+      g.save();
+      g.beginPath(); g.rect(hx, hy, head.offsetWidth - 6, head.offsetHeight); g.clip();
+      g.fillStyle = ink; g.textBaseline = "middle";
+      let hxText = hx + 8;
+      head.querySelectorAll(".idx, .tag, .cmt").forEach(s => {
+        if (!s.textContent) return;
+        g.font = `${s.classList.contains("tag") ? 600 : 400} 11.5px ${MONO}`;
+        g.globalAlpha = s.classList.contains("idx") ? .55 : s.classList.contains("cmt") ? .6 : 1;
+        g.fillText(s.textContent, hxText, hy + head.offsetHeight / 2);
+        hxText += g.measureText(s.textContent).width + 6;
+      });
+      g.restore();
+
+      const inner = body.firstElementChild;
+      const bx = nx + body.offsetLeft + inner.offsetLeft, by = ny + body.offsetTop + inner.offsetTop, bw = inner.offsetWidth, bh = inner.offsetHeight;
+      if (n._card) { drawCardNote(g, bx, by, bw, bh, inner); continue; }
+      const p = n._p;
+      if (p.kind === "image") {
+        const img = await loadImage(p.src);
+        shadowBox(g, bx, by, bw, bh, 10, "#fff");
+        g.save();
+        g.beginPath(); g.roundRect(bx, by, bw, bh, 10); g.clip();
+        if (img) drawCover(g, img, bx, by, bw, bh);
+        else { g.fillStyle = "#e9e9e9"; g.fillRect(bx, by, bw, bh); g.fillStyle = "#777"; g.font = `12px ${MONO}`; g.fillText("// photo", bx + 12, by + 20); }
+        g.restore();
+      } else if (p.kind === "link") {
+        shadowBox(g, bx, by, bw, bh, bh / 2, "#fff");
+        g.fillStyle = "#1b1b1b"; g.font = `700 15px ${UI}`; g.textBaseline = "middle";
+        g.fillText(fitText(g, (n._item.note || p.host) + "  ↗", bw - 32), bx + 16, by + bh / 2);
+      } else {
+        await drawPlayer(g, p, n._item, bx, by, bw, bh);
+      }
+    }
+    return c;
+  }
+
+  async function savePNG(btn) {
+    const label = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "Drawing…";
+    try {
+      const canvas = await renderPNG();
+      const blob = await new Promise(r => canvas.toBlob(r, "image/png"));
+      const name = (state.title.trim() || "link-bouquet").replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "").toLowerCase() + ".png";
+      const file = new File([blob], name, { type: "image/png" });
+      // phones get the share sheet, which offers Save Image; everything else downloads the file
+      let shared = false;
+      if (matchMedia("(pointer: coarse)").matches && navigator.canShare && navigator.canShare({ files: [file] })) {
+        try { await navigator.share({ files: [file] }); shared = true; } catch (e) { shared = e.name === "AbortError"; }
+      }
+      if (!shared) {
+        const a = document.createElement("a");
+        a.href = URL.createObjectURL(blob);
+        a.download = name;
+        document.body.append(a);
+        a.click();
+        a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      }
+      btn.textContent = "Saved ✓";
+    } catch (e) {
+      btn.textContent = "Could not save";
+    }
+    setTimeout(() => { btn.textContent = label; btn.disabled = false; }, 1800);
+  }
+
   /* ---------- recipient view ---------- */
   if (giftMode) {
     document.body.classList.add("gift-mode");
-    const mk = $("makeOwn");
-    mk.hidden = false;
-    mk.href = location.href.split("#")[0];
+    $("giftActions").hidden = false;
+    $("makeOwn").href = location.href.split("#")[0];
+    $("savePngGift").addEventListener("click", e => savePNG(e.currentTarget));
     $("logo").textContent = state.title;
     document.title = state.title || (state.to ? "A bouquet for " + state.to : "A bouquet for you");
     renderBackdrop();
@@ -1106,6 +1424,7 @@ Add Link to grow the first one</p>
     $("copyLink").focus();
   });
   $("shareClose").addEventListener("click", () => shareDialog.close());
+  $("savePng").addEventListener("click", e => savePNG(e.currentTarget));
   $("copyLink").addEventListener("click", () => {
     const url = $("shareUrl").value;
     const done = () => { $("toast").textContent = "Copied. Paste it in a message to send your bouquet."; };
