@@ -139,8 +139,13 @@ body.gift-mode .resize, body.gift-mode .node-head .x { display: none; }
 }
 .card-tag p { margin: 0; overflow-wrap: anywhere; }
 .card-tag .to, .card-tag .from { font-size: 19px; color: #7a6a70; }
-.card-tag .msg { margin-block: 4px 8px; white-space: pre-line; }
+.card-tag .msg { margin-block: 4px 8px; white-space: pre-wrap; min-height: 1.2em; }
 .card-tag .from { text-align: right; }
+.card-tag [contenteditable] { outline: none; border-radius: 3px; cursor: text; }
+.card-tag span[contenteditable] { display: inline-block; min-width: 1ch; }
+.card-tag [contenteditable]:hover { background: rgba(0,0,0,.05); }
+.card-tag [contenteditable]:focus { background: rgba(215,38,61,.07); box-shadow: 0 0 0 1.5px rgba(215,38,61,.45); }
+.card-tag [contenteditable]:empty::before { content: attr(data-placeholder); opacity: .4; }
 .ghost {
   position: absolute; z-index: 2; left: 50%; top: 42%; transform: translate(-50%, -50%);
   font: 13px/1.6 var(--mono); color: var(--ink); opacity: .55; text-align: center; white-space: pre; pointer-events: none;
@@ -359,12 +364,17 @@ Add Link to grow the first one</p>
 
   <section>
     <h3>Card</h3>
+    <label for="cardGreet">Greeting</label>
+    <input type="text" id="cardGreet" maxlength="16" autocomplete="off" placeholder="To">
     <label for="toName">To</label>
     <input type="text" id="toName" maxlength="40" autocomplete="off" placeholder="Their name">
     <label for="message">Message <span class="count" id="msgCount"></span></label>
     <textarea id="message" maxlength="280" placeholder="Leave empty to hide the card"></textarea>
+    <label for="cardSign">Sign-off</label>
+    <input type="text" id="cardSign" maxlength="30" autocomplete="off" placeholder="with love,">
     <label for="fromName">From</label>
     <input type="text" id="fromName" maxlength="40" autocomplete="off" placeholder="Your name">
+    <p class="hint">You can also click any text on the card and type.</p>
   </section>
 
   <section>
@@ -439,6 +449,8 @@ Add Link to grow the first one</p>
     to: "Keli",
     from: "Awu",
     msg: "Every flower here is a song or a memory I picked for you.",
+    greet: "To",
+    sign: "with love,",
     tag: "Bouquet",
     attr: "for",
     val: "Keli",
@@ -491,6 +503,8 @@ Add Link to grow the first one</p>
       to: str(s.to, 40),
       from: str(s.from, 40),
       msg: str(s.msg, 280),
+      greet: s.greet == null ? "To" : str(s.greet, 16),
+      sign: s.sign == null ? "with love," : str(s.sign, 30),
       tag: s.tag == null ? "Bouquet" : ident(s.tag),
       attr: s.attr == null ? "for" : ident(s.attr),
       val: s.val == null ? plain(str(s.to, 40)) : plain(s.val),
@@ -603,12 +617,47 @@ Add Link to grow the first one</p>
     root.setProperty("--accent", isRedish(state.bg) ? "#ffd166" : light ? "#d7263d" : "#ff6b88");
   }
 
+  /* ---------- text typed straight onto the page, mirrored by the drawer fields ---------- */
+  const oneLine = (t, max) => String(t).replace(/\s+/g, " ").slice(0, max);
+  const FIELDS = {
+    tag:   ["rootTag", ident],
+    attr:  ["rootAttr", ident],
+    val:   ["rootVal", plain],
+    greet: ["cardGreet", t => oneLine(t, 16)],
+    to:    ["toName", t => oneLine(t, 40)],
+    msg:   ["message", t => String(t).replace(/\r/g, "").slice(0, 280)],
+    sign:  ["cardSign", t => oneLine(t, 30)],
+    from:  ["fromName", t => oneLine(t, 40)]
+  };
+
+  // leave a part alone while someone is typing in it
+  function syncText(span, v) { if (span && document.activeElement !== span && span.textContent !== v) span.textContent = v; }
+
+  function makeEditable(span, key, label, multiline) {
+    const [inputId, fix] = FIELDS[key];
+    const input = $(inputId);
+    span.contentEditable = multiline ? "plaintext-only" : "true";
+    if (multiline && span.contentEditable !== "plaintext-only") span.contentEditable = "true";
+    span.spellcheck = false;
+    span.setAttribute("role", "textbox");
+    span.setAttribute("aria-label", label);
+    if (multiline) span.setAttribute("aria-multiline", "true");
+    span.addEventListener("keydown", e => { if ((e.key === "Enter" && !multiline) || e.key === "Escape") { e.preventDefault(); span.blur(); } });
+    span.addEventListener("paste", e => { e.preventDefault(); document.execCommand("insertText", false, fix(e.clipboardData.getData("text/plain") || "")); });
+    span.addEventListener("input", () => {
+      const raw = multiline ? span.innerText : span.textContent, t = fix(raw);
+      if (t !== raw || (!multiline && span.children.length)) { span.textContent = t; getSelection().collapse(span, span.childNodes.length); }
+      state[key] = t;
+      input.value = t;
+      update();
+    });
+    span.addEventListener("blur", () => { state[key] = state[key].trim(); span.textContent = state[key]; input.value = state[key]; update(); });
+  }
+
   function renderRoot() {
-    // leave a part alone while someone is typing in it
-    const set = (span, v) => { if (document.activeElement !== span && span.textContent !== v) span.textContent = v; };
-    set(rtTag, giftMode ? state.tag || "Bouquet" : state.tag);
-    set(rtAttr, state.attr);
-    set(rtVal, state.val);
+    syncText(rtTag, giftMode ? state.tag || "Bouquet" : state.tag);
+    syncText(rtAttr, state.attr);
+    syncText(rtVal, state.val);
     rtAttrs.hidden = giftMode && !state.attr;
   }
 
@@ -660,14 +709,26 @@ Add Link to grow the first one</p>
       heights: p.heights };
   }
 
+  let cardEls = null;
   function cardBody() {
     const body = el("div", "node-body");
     const card = el("div", "card-tag");
-    const to = el("p", "to"); to.textContent = "To " + (state.to || "you") + ",";
-    const msg = el("p", "msg"); msg.textContent = state.msg;
-    const from = el("p", "from"); from.textContent = "with love, " + (state.from || "me");
-    card.append(to, msg, from);
+    const part = (tag, ph) => { const n = el(tag); n.dataset.placeholder = ph; return n; };
+    const greet = part("span", "To"), to = part("span", "name"), sign = part("span", "with love,"), from = part("span", "your name");
+    const msg = part("p", "Write your message");
+    msg.className = "msg";
+    const toLine = el("p", "to"); toLine.append(greet, " ", to, ",");
+    const fromLine = el("p", "from"); fromLine.append(sign, " ", from);
+    card.append(toLine, msg, fromLine);
     body.append(card);
+    cardEls = { greet, to, msg, sign, from };
+    if (!giftMode) {
+      makeEditable(greet, "greet", "Card greeting");
+      makeEditable(to, "to", "Card recipient name");
+      makeEditable(msg, "msg", "Card message", true);
+      makeEditable(sign, "sign", "Card sign-off");
+      makeEditable(from, "from", "Card sender name");
+    }
     const apply = () => { body.style.width = `min(${state.card.w || 230}px, 86vw)`; };
     apply();
     return { body, resizable: true, apply,
@@ -683,7 +744,7 @@ Add Link to grow the first one</p>
     const idx = el("span", "idx"); idx.textContent = head.idx;
     const tag = el("span", "tag"); tag.textContent = head.tag;
     h.append(idx, tag);
-    if (head.cmt) { const c = el("span", "cmt"); c.textContent = "// " + head.cmt; h.append(c); }
+    if (head.cmt || head.keepCmt) { const c = el("span", "cmt"); c.textContent = head.cmt ? "// " + head.cmt : ""; h.append(c); }
     if (!giftMode) {
       h.tabIndex = 0;
       h.setAttribute("role", "button");
@@ -705,11 +766,23 @@ Add Link to grow the first one</p>
     return n;
   }
 
+  function syncCard() {
+    if (!cardEls) return;
+    const fallback = { greet: "To", to: "you", msg: "", sign: "with love,", from: "me" };
+    Object.keys(fallback).forEach(k => syncText(cardEls[k], giftMode ? state[k] || fallback[k] : state[k]));
+    if (cardEls.cmt) cardEls.cmt.textContent = state.from ? "// from " + state.from : "";
+  }
+
+  // the card stays while someone is typing in it, even with the message cleared
+  const cardFocused = () => !!cardEls && Object.values(cardEls).includes(document.activeElement);
+
   function renderFloats() {
-    const key = JSON.stringify([state.links.map(l => [l.url, l.note]), state.to, state.msg, state.from]);
+    const hasCard = !!state.msg.trim() || cardFocused();
+    const key = JSON.stringify([state.links.map(l => [l.url, l.note]), hasCard]);
     if (key !== floatsKey) {
       floatsKey = key;
       floatsLayer.textContent = "";
+      cardEls = null;
       let shown = 0;
       state.links.forEach((l, i) => {
         const p = parseLink(l.url);
@@ -718,13 +791,16 @@ Add Link to grow the first one</p>
         floatsLayer.append(makeNode(parts, { idx: `[${i}]`, tag: p.tag, cmt: l.note }, () => l, q => { l.x = q.x; l.y = q.y; },
           "flower " + (i + 1), () => { state.links.splice(i, 1); update(); }, shown++));
       });
-      if (state.msg.trim()) {
-        floatsLayer.append(makeNode(cardBody(), { idx: "[✉]", tag: "card.note", cmt: state.from ? "from " + state.from : "" },
+      if (hasCard) {
+        const node = makeNode(cardBody(), { idx: "[✉]", tag: "card.note", keepCmt: true },
           () => state.card, q => { state.card.x = q.x; state.card.y = q.y; }, "card",
-          () => { state.msg = ""; $("message").value = ""; update(); }, shown++));
+          () => { state.msg = ""; $("message").value = ""; update(); }, shown++);
+        cardEls.cmt = node.querySelector(".cmt");
+        floatsLayer.append(node);
       }
       $("ghost").hidden = giftMode || shown > 0;
     }
+    syncCard();
     layoutFloats();
   }
 
@@ -924,31 +1000,19 @@ Add Link to grow the first one</p>
   logo.addEventListener("blur", () => { state.title = state.title.trim(); logo.textContent = state.title; titleText.value = state.title; update(); });
   titleText.addEventListener("input", () => { state.title = titleText.value; logo.textContent = state.title; update(); });
 
-  /* ---------- editor: root tag, typed on the page or in the drawer ---------- */
-  [[rtTag, "tag", ident, "rootTag", "Tag name"], [rtAttr, "attr", ident, "rootAttr", "Attribute"], [rtVal, "val", plain, "rootVal", "Attribute value"]]
-    .forEach(([span, key, fix, inputId, label]) => {
-      const input = $(inputId);
-      span.contentEditable = "true";
-      span.spellcheck = false;
-      span.setAttribute("role", "textbox");
-      span.setAttribute("aria-label", "Root tag " + label.toLowerCase());
-      input.value = state[key];
-      span.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); span.blur(); } });
-      span.addEventListener("paste", e => { e.preventDefault(); document.execCommand("insertText", false, fix(e.clipboardData.getData("text/plain") || "")); });
-      span.addEventListener("input", () => {
-        const raw = span.textContent, t = fix(raw);
-        if (t !== raw || span.children.length) { span.textContent = t; getSelection().collapse(span, span.childNodes.length); }
-        state[key] = t;
-        input.value = t;
-        update();
-      });
-      span.addEventListener("blur", () => { state[key] = state[key].trim(); span.textContent = state[key]; input.value = state[key]; update(); });
-      input.addEventListener("input", () => {
-        state[key] = fix(input.value);
-        if (input.value !== state[key]) input.value = state[key];
-        update();
-      });
+  /* ---------- editor: root tag and card fields ---------- */
+  makeEditable(rtTag, "tag", "Root tag name");
+  makeEditable(rtAttr, "attr", "Root tag attribute");
+  makeEditable(rtVal, "val", "Root tag attribute value");
+  Object.entries(FIELDS).forEach(([key, [inputId, fix]]) => {
+    const input = $(inputId);
+    input.value = state[key];
+    input.addEventListener("input", () => {
+      state[key] = fix(input.value);
+      if (input.value !== state[key]) input.value = state[key];
+      update();
     });
+  });
 
   /* ---------- editor: background ---------- */
   const bgBox = $("bgSwatches");
@@ -980,12 +1044,6 @@ Add Link to grow the first one</p>
   drawerTab.addEventListener("click", () => setDrawer(true));
   $("drawerClose").addEventListener("click", () => setDrawer(false));
   document.addEventListener("keydown", e => { if (e.key === "Escape" && drawer.classList.contains("open") && !document.querySelector("dialog[open]")) setDrawer(false); });
-
-  [["toName", "to"], ["message", "msg"], ["fromName", "from"]].forEach(([id, key]) => {
-    const input = $(id);
-    input.value = state[key];
-    input.addEventListener("input", () => { state[key] = input.value; update(); });
-  });
 
   let noteTimer;
   function renderLinkList() {
