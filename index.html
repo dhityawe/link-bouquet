@@ -46,13 +46,18 @@ button, input, textarea { font: inherit; color: inherit; }
 
 /* ---------- canvas ---------- */
 .stage { position: fixed; inset: 0; overflow: hidden; overflow: clip; }
+/* the canvas is the viewport on big screens; small screens get a 1280x800 canvas scaled down (set from JS) */
+.canvas {
+  position: absolute; left: 0; top: 0; width: var(--cw, 100vw); height: var(--ch, 100vh);
+  transform-origin: 0 0; transform: translate(var(--cx, 0px), var(--cy, 0px)) scale(var(--cs, 1));
+}
 .logo {
   position: absolute; z-index: 3; margin: 0;
   top: calc(18px + env(safe-area-inset-top, 0px)); left: max(24px, env(safe-area-inset-left, 0px));
   font-family: var(--marker); font-weight: 400; color: var(--ink);
-  font-size: clamp(40px, 6.4vw, 92px); line-height: .9; letter-spacing: .01em;
+  font-size: clamp(40px, calc(var(--cw, 100vw) * .064), 92px); line-height: .9; letter-spacing: .01em;
   transform: rotate(-4deg); transform-origin: left top; pointer-events: none;
-  max-width: min(9ch, calc(100vw - 260px)); overflow-wrap: break-word; padding: 2px 6px; border-radius: 8px;
+  max-width: min(9ch, calc(var(--cw, 100vw) - 260px)); overflow-wrap: break-word; padding: 2px 6px; border-radius: 8px;
 }
 body:not(.gift-mode) .logo { pointer-events: auto; cursor: text; outline: 2px dashed transparent; outline-offset: 4px; }
 body:not(.gift-mode) .logo:hover { outline-color: currentColor; }
@@ -60,7 +65,7 @@ body:not(.gift-mode) .logo:focus { outline: 2px dashed var(--focus); }
 body:not(.gift-mode) .logo:empty::before { content: attr(data-placeholder); opacity: .28; }
 body.gift-mode .logo:empty { display: none; }
 .doodle { position: absolute; z-index: 1; color: var(--accent); pointer-events: none; }
-.doodle-bow { right: max(28px, env(safe-area-inset-right, 0px)); top: calc(26px + env(safe-area-inset-top, 0px)); width: clamp(50px, 5vw, 76px); }
+.doodle-bow { right: max(28px, env(safe-area-inset-right, 0px)); top: calc(26px + env(safe-area-inset-top, 0px)); width: clamp(50px, calc(var(--cw, 100vw) * .05), 76px); }
 
 /* ---------- wires ---------- */
 .wires { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; overflow: visible; }
@@ -90,7 +95,6 @@ body.gift-mode .logo:empty { display: none; }
 .root .rt-tag:empty::before { content: "Bouquet"; opacity: .45; }
 .root .rt-attr:empty::before { content: "for"; opacity: .45; }
 .root .rt-val:empty::before { content: "name"; opacity: .45; }
-.stage-end { display: none; }
 
 /* ---------- nodes (each link is a flower) ---------- */
 .floats { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
@@ -261,28 +265,8 @@ dialog .lead { margin: 0 0 6px; color: var(--muted); font-size: 14px; }
 /* ---------- recipient mode ---------- */
 body.gift-mode .controls, body.gift-mode .drawer-tab, body.gift-mode .drawer { display: none !important; }
 
-/* ---------- phones: the canvas scrolls and flowers stack top to bottom ---------- */
+/* ---------- phones: same canvas as desktop, scaled to fit; the controls become a bottom bar ---------- */
 @media (max-width: 680px), (max-height: 500px) {
-  .stage { overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
-  .logo {
-    position: relative; top: auto; left: auto; display: inline-block; font-size: 44px; max-width: calc(100vw - 96px);
-    margin: calc(20px + env(safe-area-inset-top, 0px)) 0 0 max(14px, env(safe-area-inset-left, 0px));
-  }
-  .doodle-bow { right: 16px; top: calc(22px + env(safe-area-inset-top, 0px)); width: 44px; }
-  .floats {
-    position: relative; inset: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 34px;
-    padding: 26px max(14px, env(safe-area-inset-right, 0px)) 0 max(14px, env(safe-area-inset-left, 0px));
-  }
-  .node { position: relative; left: auto !important; top: auto !important; max-width: 100%; }
-  .node.alt { align-self: flex-end; }
-  body:not(.gift-mode) .node-head { touch-action: auto; cursor: default; }
-  .root {
-    position: relative; left: auto !important; top: auto !important; transform: none; display: table;
-    margin: 48px auto 0; font-size: 12px; padding: 8px 11px; white-space: normal; overflow-wrap: anywhere; max-width: calc(100vw - 32px);
-  }
-  .stage-end { display: block; height: 230px; }
-  body.gift-mode .stage-end { height: 120px; }
-  .ghost { top: 46%; }
   .controls {
     left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); width: auto;
     bottom: calc(12px + env(safe-area-inset-bottom, 0px)); gap: 8px;
@@ -308,6 +292,7 @@ body.gift-mode .controls, body.gift-mode .drawer-tab, body.gift-mode .drawer { d
 </svg>
 
 <main class="stage" id="stage">
+  <div class="canvas" id="canvas">
   <h1 class="logo" id="logo" data-placeholder="Add a title"></h1>
 
   <svg class="doodle doodle-bow" viewBox="0 0 100 90" aria-hidden="true">
@@ -321,9 +306,9 @@ body.gift-mode .controls, body.gift-mode .drawer-tab, body.gift-mode .drawer { d
   <svg class="wires" id="wires" aria-hidden="true"></svg>
   <div class="floats" id="floats"></div>
   <div class="root" id="root"></div>
-  <div class="stage-end" aria-hidden="true"></div>
   <p class="ghost" id="ghost" hidden>// no flowers yet
 Add Link to grow the first one</p>
+  </div>
 
   <button type="button" class="drawer-tab" id="drawerTab" aria-controls="drawer" aria-expanded="false" aria-label="Open title, card and link settings">&rsaquo;</button>
 
@@ -381,7 +366,7 @@ Add Link to grow the first one</p>
     <h3>Flowers <span class="count" id="linkCount"></span></h3>
     <div class="link-list" id="linkList"></div>
     <div class="row"><button type="button" class="btn small" id="addLinkBtn2">Add Link</button></div>
-    <p class="hint">Drag a flower by its code label to move it. Drag the corner square to resize it. On a phone the flowers stack top to bottom in the order they sit on a big screen.</p>
+    <p class="hint">Drag a flower by its code label to move it. Drag the corner square to resize it.</p>
   </section>
 </aside>
 
@@ -699,7 +684,7 @@ Add Link to grow the first one</p>
       body.append(frame);
     }
     const apply = () => {
-      body.style.width = `min(${item.w || p.w}px, 86vw)`;
+      body.style.width = `min(${item.w || p.w}px, calc(var(--cw) * .86))`;
       if (frame && p.heights) frame.style.height = (item.h || p.h) + "px";
     };
     apply();
@@ -729,7 +714,7 @@ Add Link to grow the first one</p>
       makeEditable(sign, "sign", "Card sign-off");
       makeEditable(from, "from", "Card sender name");
     }
-    const apply = () => { body.style.width = `min(${state.card.w || 230}px, 86vw)`; };
+    const apply = () => { body.style.width = `min(${state.card.w || 230}px, calc(var(--cw) * .86))`; };
     apply();
     return { body, resizable: true, apply,
       size: () => ({ w: state.card.w || 230, h: 0 }),
@@ -804,52 +789,65 @@ Add Link to grow the first one</p>
     layoutFloats();
   }
 
-  function layoutFloats() {
+  // canvas size in its own pixels (w, h), its scale on screen (s) and its offset on screen (x, y)
+  let view = { w: 0, h: 0, s: 1, x: 0, y: 0 };
+
+  // Small screens show the same 1280x800 canvas a desktop shows, scaled down to fit, so the bouquet looks identical.
+  function fitCanvas() {
     const vw = window.innerWidth, vh = window.innerHeight;
-    const nodes = [...floatsLayer.querySelectorAll(".node")];
-    if (phoneMQ.matches) {
-      // phones stack the flowers top to bottom in the order they sit on a big screen, zig-zagging left and right
-      nodes.map(n => ({ n, p: n._pos() })).sort((a, b) => a.p.y - b.p.y || a.p.x - b.p.x)
-        .forEach(({ n }, i) => { n.style.order = i; n.classList.toggle("alt", i % 2 === 1); });
-    } else {
-      nodes.forEach(n => {
-        n.style.order = "";
-        n.classList.remove("alt");
-        const p = n._pos(), w = n.offsetWidth, h = n.offsetHeight;
-        const cx = p.x / 100 * vw, cy = p.y / 100 * vh;
-        n.style.left = clamp(cx - w / 2, 8, Math.max(8, vw - w - 8)) + "px";
-        n.style.top = clamp(cy - h / 2, 8, Math.max(8, vh - h - 8)) + "px";
-      });
+    let w = vw, h = vh, s = 1, x = 0, y = 0;
+    if (vw < 900 || vh < 560) {
+      w = 1280; h = 800;
+      const bar = !giftMode && phoneMQ.matches ? $("controls").getBoundingClientRect().height + 24 : 0;
+      const room = vh - bar;
+      s = Math.min(vw / w, room / h);
+      x = (vw - w * s) / 2;
+      y = (room - h * s) / 2;
     }
+    view = { w, h, s, x, y };
+    const st = document.documentElement.style;
+    st.setProperty("--cw", w + "px");
+    st.setProperty("--ch", h + "px");
+    st.setProperty("--cs", s);
+    st.setProperty("--cx", x + "px");
+    st.setProperty("--cy", y + "px");
+  }
+
+  function layoutFloats() {
+    fitCanvas();
+    const { w: cw, h: ch } = view;
+    const nodes = [...floatsLayer.querySelectorAll(".node")];
+    nodes.forEach(n => {
+      const p = n._pos(), w = n.offsetWidth, h = n.offsetHeight;
+      const cx = p.x / 100 * cw, cy = p.y / 100 * ch;
+      n.style.left = clamp(cx - w / 2, 8, Math.max(8, cw - w - 8)) + "px";
+      n.style.top = clamp(cy - h / 2, 8, Math.max(8, ch - h - 8)) + "px";
+    });
     drawWires(nodes);
   }
 
   function drawWires(nodes) {
-    const phone = phoneMQ.matches;
-    const vw = stage.clientWidth, vh = window.innerHeight;
-    if (!phone) {
-      rootEl.style.left = window.innerWidth / 2 + "px";
-      rootEl.style.top = vh - 110 + "px";
-    }
-    // on phones the canvas scrolls, so the wire layer spans the whole scroll height
-    wires.style.height = "0px";
-    const H = phone ? stage.scrollHeight : vh;
-    wires.style.height = H + "px";
-    wires.setAttribute("viewBox", `0 0 ${vw} ${H}`);
+    const { w: cw, h: ch, s, y } = view;
+    const rw = rootEl.offsetWidth, rh = rootEl.offsetHeight;
+    rootEl.style.left = cw / 2 + "px";
+    rootEl.style.top = ch - 110 + "px";
+    wires.setAttribute("viewBox", `0 0 ${cw} ${ch}`);
     wires.textContent = "";
-    const st = stage.scrollTop;
-    const local = r => ({ left: r.left, width: r.width, top: r.top + st, bottom: r.bottom + st });
-    const rr = local(rootEl.getBoundingClientRect());
-    const rx = rr.left + rr.width / 2;
+    // positions in canvas pixels; the root is centered on its point
+    const box = n => ({ left: n.offsetLeft, width: n.offsetWidth, top: n.offsetTop, bottom: n.offsetTop + n.offsetHeight });
+    const rr = { left: cw / 2 - rw / 2, width: rw, top: ch - 110 - rh / 2, bottom: ch - 110 + rh / 2 };
+    const rx = cw / 2;
+    // stems run to the bottom of the screen, which on a scaled canvas sits below the canvas
+    const screenBottom = (window.innerHeight - y) / s + 4;
 
     // stems: the bundled wires leaving the root toward the bottom edge
     const count = Math.max(3, Math.min(9, nodes.length));
     for (let i = 0; i < count; i++) {
       const o = i - (count - 1) / 2;
-      wires.append(svg("line", { class: "stem", x1: rx + o * 5, y1: rr.bottom, x2: rx + o * 12, y2: H + 4 }));
+      wires.append(svg("line", { class: "stem", x1: rx + o * 5, y1: rr.bottom, x2: rx + o * 12, y2: screenBottom }));
     }
 
-    const ordered = nodes.map(n => ({ n, r: local(n.getBoundingClientRect()) })).sort((a, b) => (a.r.left + a.r.width / 2) - (b.r.left + b.r.width / 2));
+    const ordered = nodes.map(n => ({ n, r: box(n) })).sort((a, b) => (a.r.left + a.r.width / 2) - (b.r.left + b.r.width / 2));
     ordered.forEach(({ n, r }, i) => {
       const sx = r.left + r.width / 2, sy = r.bottom + 2;
       const ex = rx + (i - (ordered.length - 1) / 2) * Math.min(10, rr.width / Math.max(1, ordered.length)), ey = rr.top - 1;
@@ -877,11 +875,10 @@ Add Link to grow the first one</p>
   if (phoneMQ.addEventListener) phoneMQ.addEventListener("change", layoutFloats);
   if (document.fonts) document.fonts.ready.then(layoutFloats);
 
-  // dragging places flowers on the big-screen canvas; phones show them stacked, so a touch on the label scrolls instead
   function attachDrag(handle, getPos, setPos) {
     let start = null;
     handle.addEventListener("pointerdown", e => {
-      if (e.button !== 0 || phoneMQ.matches) return;
+      if (e.button !== 0) return;
       e.preventDefault();
       handle.setPointerCapture(e.pointerId);
       const p = getPos();
@@ -890,7 +887,8 @@ Add Link to grow the first one</p>
     });
     handle.addEventListener("pointermove", e => {
       if (!start) return;
-      setPos({ x: clamp(start.x + (e.clientX - start.px) / window.innerWidth * 100, 0, 100), y: clamp(start.y + (e.clientY - start.py) / window.innerHeight * 100, 0, 100) });
+      // pointer moves in screen pixels; the canvas may be scaled
+      setPos({ x: clamp(start.x + (e.clientX - start.px) / (view.w * view.s) * 100, 0, 100), y: clamp(start.y + (e.clientY - start.py) / (view.h * view.s) * 100, 0, 100) });
       layoutFloats();
     });
     const end = () => { if (!start) return; start = null; document.body.classList.remove("dragging"); save(); };
@@ -898,7 +896,7 @@ Add Link to grow the first one</p>
     handle.addEventListener("pointercancel", end);
     handle.addEventListener("keydown", e => {
       const step = e.shiftKey ? 6 : 2, d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
-      if (!d || phoneMQ.matches) return;
+      if (!d) return;
       e.preventDefault();
       const p = getPos();
       setPos({ x: clamp(p.x + d[0], 0, 100), y: clamp(p.y + d[1], 0, 100) });
@@ -913,8 +911,8 @@ Add Link to grow the first one</p>
       e.preventDefault(); e.stopPropagation();
       grip.setPointerCapture(e.pointerId);
       const sz = parts.size();
-      // on the big-screen canvas the node stays centered on its point, so a corner drag grows it by twice the pointer distance
-      start = { px: e.clientX, py: e.clientY, w: sz.w, h: sz.h, k: phoneMQ.matches ? 1 : 2 };
+      // the node stays centered on its point, so a corner drag grows it by twice the pointer distance (in canvas pixels)
+      start = { px: e.clientX, py: e.clientY, w: sz.w, h: sz.h, k: 2 / view.s };
       document.body.classList.add("resizing");
     });
     grip.addEventListener("pointermove", e => {
