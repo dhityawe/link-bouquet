@@ -82,8 +82,15 @@ body.gift-mode .logo:empty { display: none; }
   background: var(--ink); color: var(--bg); padding: 9px 13px; border-radius: 8px;
   box-shadow: 0 8px 22px rgba(0,0,0,.18);
 }
-.root .attr { opacity: .7; }
-.root .str { color: var(--accent); filter: brightness(1.35); }
+.root .rt-attr { opacity: .7; }
+.root .rt-val { color: var(--accent); filter: brightness(1.35); }
+.root [contenteditable] { display: inline-block; min-width: 1ch; padding: 0 1px; border-radius: 3px; outline: none; cursor: text; }
+.root [contenteditable]:hover { box-shadow: inset 0 -1.5px 0 currentColor; }
+.root [contenteditable]:focus { box-shadow: none; outline: 1.5px dashed var(--accent); outline-offset: 1px; }
+.root .rt-tag:empty::before { content: "Bouquet"; opacity: .45; }
+.root .rt-attr:empty::before { content: "for"; opacity: .45; }
+.root .rt-val:empty::before { content: "name"; opacity: .45; }
+.stage-end { display: none; }
 
 /* ---------- nodes (each link is a flower) ---------- */
 .floats { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
@@ -141,7 +148,7 @@ body.gift-mode .resize, body.gift-mode .node-head .x { display: none; }
 
 /* ---------- corner controls ---------- */
 .controls {
-  position: absolute; z-index: 4; display: flex; flex-direction: column; align-items: stretch; gap: 12px;
+  position: fixed; z-index: 4; display: flex; flex-direction: column; align-items: stretch; gap: 12px;
   right: max(24px, env(safe-area-inset-right, 0px)); bottom: calc(20px + env(safe-area-inset-bottom, 0px)); width: 186px;
 }
 .bg-swatches { display: grid; grid-template-columns: repeat(5, 32px); gap: 6px; justify-content: end; }
@@ -165,13 +172,13 @@ body.gift-mode .resize, body.gift-mode .node-head .x { display: none; }
 .btn:disabled { opacity: .5; cursor: not-allowed; }
 
 .make-own {
-  position: absolute; z-index: 4; right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  position: fixed; z-index: 4; right: max(20px, env(safe-area-inset-right, 0px)); bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   padding: 8px 14px; border-radius: 999px; background: rgba(255,255,255,.86); color: #1b1b1b; font-size: 13px; font-weight: 600; text-decoration: none;
 }
 
 /* ---------- left drawer ---------- */
 .drawer-tab {
-  position: absolute; z-index: 4; left: 0; top: 50%; transform: translateY(-50%);
+  position: fixed; z-index: 4; left: 0; top: 50%; transform: translateY(-50%);
   width: 40px; height: 80px; border: 1px solid var(--line); border-left: 0; border-radius: 0 10px 10px 0;
   background: var(--ctrl); color: #444; cursor: pointer; font-size: 20px;
 }
@@ -249,10 +256,28 @@ dialog .lead { margin: 0 0 6px; color: var(--muted); font-size: 14px; }
 /* ---------- recipient mode ---------- */
 body.gift-mode .controls, body.gift-mode .drawer-tab, body.gift-mode .drawer { display: none !important; }
 
-/* ---------- phones ---------- */
-@media (max-width: 680px) {
-  .logo { font-size: 40px; left: 16px; max-width: calc(100vw - 96px); }
-  .doodle-bow { right: 16px; width: 44px; }
+/* ---------- phones: the canvas scrolls and flowers stack top to bottom ---------- */
+@media (max-width: 680px), (max-height: 500px) {
+  .stage { overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; }
+  .logo {
+    position: relative; top: auto; left: auto; display: inline-block; font-size: 44px; max-width: calc(100vw - 96px);
+    margin: calc(20px + env(safe-area-inset-top, 0px)) 0 0 max(14px, env(safe-area-inset-left, 0px));
+  }
+  .doodle-bow { right: 16px; top: calc(22px + env(safe-area-inset-top, 0px)); width: 44px; }
+  .floats {
+    position: relative; inset: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 34px;
+    padding: 26px max(14px, env(safe-area-inset-right, 0px)) 0 max(14px, env(safe-area-inset-left, 0px));
+  }
+  .node { position: relative; left: auto !important; top: auto !important; max-width: 100%; }
+  .node.alt { align-self: flex-end; }
+  body:not(.gift-mode) .node-head { touch-action: auto; cursor: default; }
+  .root {
+    position: relative; left: auto !important; top: auto !important; transform: none; display: table;
+    margin: 48px auto 0; font-size: 12px; padding: 8px 11px; white-space: normal; overflow-wrap: anywhere; max-width: calc(100vw - 32px);
+  }
+  .stage-end { display: block; height: 230px; }
+  body.gift-mode .stage-end { height: 120px; }
+  .ghost { top: 46%; }
   .controls {
     left: max(12px, env(safe-area-inset-left, 0px)); right: max(12px, env(safe-area-inset-right, 0px)); width: auto;
     bottom: calc(12px + env(safe-area-inset-bottom, 0px)); gap: 8px;
@@ -261,10 +286,8 @@ body.gift-mode .controls, body.gift-mode .drawer-tab, body.gift-mode .drawer { d
   .bg-swatches { justify-content: start; }
   .btn-row { display: grid; grid-template-columns: 1fr 1.3fr; gap: 8px; }
   .drawer-tab { top: 40%; width: 34px; height: 64px; }
-  .node { transform: scale(.68); }
-  .root { font-size: 11px; padding: 7px 10px; }
 }
-@media (min-width: 681px) { .btn-row { display: contents; } }
+@media (min-width: 681px) and (min-height: 501px) { .btn-row { display: contents; } }
 
 @media (prefers-reduced-motion: reduce) {
   .wire-flow { animation: none; }
@@ -293,6 +316,7 @@ body.gift-mode .controls, body.gift-mode .drawer-tab, body.gift-mode .drawer { d
   <svg class="wires" id="wires" aria-hidden="true"></svg>
   <div class="floats" id="floats"></div>
   <div class="root" id="root"></div>
+  <div class="stage-end" aria-hidden="true"></div>
   <p class="ghost" id="ghost" hidden>// no flowers yet
 Add Link to grow the first one</p>
 
@@ -323,6 +347,17 @@ Add Link to grow the first one</p>
   </section>
 
   <section>
+    <h3>Root tag</h3>
+    <p class="hint">The code tag where all the flowers meet. You can also click its parts on the page and type.</p>
+    <label for="rootTag">Tag name</label>
+    <input type="text" id="rootTag" maxlength="24" autocomplete="off" placeholder="Bouquet">
+    <label for="rootAttr">Attribute</label>
+    <input type="text" id="rootAttr" maxlength="24" autocomplete="off" placeholder="for (leave empty to hide)">
+    <label for="rootVal">Value</label>
+    <input type="text" id="rootVal" maxlength="40" autocomplete="off" placeholder="Keli">
+  </section>
+
+  <section>
     <h3>Card</h3>
     <label for="toName">To</label>
     <input type="text" id="toName" maxlength="40" autocomplete="off" placeholder="Their name">
@@ -336,7 +371,7 @@ Add Link to grow the first one</p>
     <h3>Flowers <span class="count" id="linkCount"></span></h3>
     <div class="link-list" id="linkList"></div>
     <div class="row"><button type="button" class="btn small" id="addLinkBtn2">Add Link</button></div>
-    <p class="hint">Drag a flower by its code label to move it. Drag the corner square to resize it.</p>
+    <p class="hint">Drag a flower by its code label to move it. Drag the corner square to resize it. On a phone the flowers stack top to bottom in the order they sit on a big screen.</p>
   </section>
 </aside>
 
@@ -400,10 +435,13 @@ Add Link to grow the first one</p>
   const DROP_SPOTS = [[26,24],[74,22],[50,16],[18,48],[82,46],[36,40],[64,40],[50,30],[14,22],[86,24]];
 
   const EXAMPLE = {
-    title: "For Mira",
-    to: "Mira",
-    from: "Sam",
-    msg: "Happy birthday! Every flower here is a song or a memory from our road trip.",
+    title: "For Keli",
+    to: "Keli",
+    from: "Awu",
+    msg: "Every flower here is a song or a memory I picked for you.",
+    tag: "Bouquet",
+    attr: "for",
+    val: "Keli",
     bg: "#ffffff",
     card: { x: 80, y: 58, w: 230 },
     links: [
@@ -440,6 +478,9 @@ Add Link to grow the first one</p>
 
   const num = (v, a, b) => { v = Number(v); return Number.isFinite(v) && v > 0 ? clamp(Math.round(v), a, b) : 0; };
   const pct = (v, f) => { v = Number(v); return Number.isFinite(v) ? clamp(v, 0, 100) : f; };
+  // root tag parts: names keep to code-like characters, the value just loses double quotes
+  const ident = t => String(t).replace(/[^\p{L}\p{N}_.:-]/gu, "").slice(0, 24);
+  const plain = t => String(t).replace(/\s+/g, " ").replace(/"/g, "'").slice(0, 40);
 
   function clean(s) {
     s = s && typeof s === "object" ? s : {};
@@ -450,6 +491,9 @@ Add Link to grow the first one</p>
       to: str(s.to, 40),
       from: str(s.from, 40),
       msg: str(s.msg, 280),
+      tag: s.tag == null ? "Bouquet" : ident(s.tag),
+      attr: s.attr == null ? "for" : ident(s.attr),
+      val: s.val == null ? plain(str(s.to, 40)) : plain(s.val),
       bg: /^#[0-9a-f]{6}$/i.test(s.bg) ? s.bg.toLowerCase() : "#ffffff",
       card: { x: pct(card.x, 80), y: pct(card.y, 58), w: num(card.w, 180, 420) },
       links: Array.isArray(s.links) ? s.links.slice(0, MAX_LINKS).map((l, i) => {
@@ -523,14 +567,29 @@ Add Link to grow the first one</p>
   if (giftMode) {
     try { state = clean(decodeState(location.hash.slice(6))); } catch (e) { state = clean(EXAMPLE); }
   } else {
-    try { const saved = localStorage.getItem(STORE_KEY); state = clean(saved ? JSON.parse(saved) : EXAMPLE); }
+    try { const saved = localStorage.getItem(STORE_KEY); state = clean(saved ? renameOldExample(JSON.parse(saved)) : EXAMPLE); }
     catch (e) { state = clean(EXAMPLE); }
+  }
+
+  // drafts still holding the untouched earlier example names get the new ones
+  function renameOldExample(s) {
+    const OLD = { title: "For Mira", to: "Mira", from: "Sam", msg: "Happy birthday! Every flower here is a song or a memory from our road trip." };
+    if (s && s.to === OLD.to && s.from === OLD.from) {
+      Object.keys(OLD).forEach(k => { if (s[k] === OLD[k]) s[k] = EXAMPLE[k]; });
+      if (s.val == null) s.val = EXAMPLE.val;
+    }
+    return s;
   }
   function save() { if (giftMode) return; try { localStorage.setItem(STORE_KEY, JSON.stringify(state)); } catch (e) { /* storage unavailable */ } }
 
   /* ---------- canvas ---------- */
   const stage = $("stage"), floatsLayer = $("floats"), wires = $("wires"), rootEl = $("root");
+  const phoneMQ = window.matchMedia("(max-width: 680px), (max-height: 500px)");
   let floatsKey = "";
+
+  const rtTag = el("span", "rt-tag"), rtAttr = el("span", "rt-attr"), rtVal = el("span", "rt-val"), rtAttrs = el("span");
+  rtAttrs.append(" ", rtAttr, "=\"", rtVal, "\"");
+  rootEl.append("<", rtTag, rtAttrs, " />");
 
   function renderBackdrop() {
     const root = document.documentElement.style;
@@ -545,14 +604,12 @@ Add Link to grow the first one</p>
   }
 
   function renderRoot() {
-    rootEl.textContent = "";
-    rootEl.append("<Bouquet");
-    if (state.to) {
-      const a = el("span", "attr"); a.textContent = " for=";
-      const s = el("span", "str"); s.textContent = `"${state.to}"`;
-      rootEl.append(a, s);
-    }
-    rootEl.append(" />");
+    // leave a part alone while someone is typing in it
+    const set = (span, v) => { if (document.activeElement !== span && span.textContent !== v) span.textContent = v; };
+    set(rtTag, giftMode ? state.tag || "Bouquet" : state.tag);
+    set(rtAttr, state.attr);
+    set(rtVal, state.val);
+    rtAttrs.hidden = giftMode && !state.attr;
   }
 
   function makeEmbed(p) {
@@ -671,48 +728,55 @@ Add Link to grow the first one</p>
     layoutFloats();
   }
 
-  function rootPoint() {
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const phone = vw <= 680;
-    return { x: vw / 2, y: vh - (giftMode ? (phone ? 90 : 110) : (phone ? 190 : 110)) };
-  }
-
   function layoutFloats() {
     const vw = window.innerWidth, vh = window.innerHeight;
     const nodes = [...floatsLayer.querySelectorAll(".node")];
-    nodes.forEach(n => {
-      const p = n._pos();
-      // phones scale nodes down around their center, so clamp the visible box, not the layout box
-      const w = n.offsetWidth, h = n.offsetHeight;
-      const s = w ? n.getBoundingClientRect().width / w : 1;
-      const dx = w * (1 - s) / 2, dy = h * (1 - s) / 2;
-      const cx = p.x / 100 * vw, cy = p.y / 100 * vh;
-      n.style.left = clamp(cx - w / 2, 8 - dx, Math.max(8 - dx, vw - w - 8 + dx)) + "px";
-      n.style.top = clamp(cy - h / 2, 8 - dy, Math.max(8 - dy, vh - h - 8 + dy)) + "px";
-    });
+    if (phoneMQ.matches) {
+      // phones stack the flowers top to bottom in the order they sit on a big screen, zig-zagging left and right
+      nodes.map(n => ({ n, p: n._pos() })).sort((a, b) => a.p.y - b.p.y || a.p.x - b.p.x)
+        .forEach(({ n }, i) => { n.style.order = i; n.classList.toggle("alt", i % 2 === 1); });
+    } else {
+      nodes.forEach(n => {
+        n.style.order = "";
+        n.classList.remove("alt");
+        const p = n._pos(), w = n.offsetWidth, h = n.offsetHeight;
+        const cx = p.x / 100 * vw, cy = p.y / 100 * vh;
+        n.style.left = clamp(cx - w / 2, 8, Math.max(8, vw - w - 8)) + "px";
+        n.style.top = clamp(cy - h / 2, 8, Math.max(8, vh - h - 8)) + "px";
+      });
+    }
     drawWires(nodes);
   }
 
   function drawWires(nodes) {
-    const vw = window.innerWidth, vh = window.innerHeight;
-    const rp = rootPoint();
-    rootEl.style.left = rp.x + "px";
-    rootEl.style.top = rp.y + "px";
-    const rr = rootEl.getBoundingClientRect();
-    wires.setAttribute("viewBox", `0 0 ${vw} ${vh}`);
+    const phone = phoneMQ.matches;
+    const vw = stage.clientWidth, vh = window.innerHeight;
+    if (!phone) {
+      rootEl.style.left = window.innerWidth / 2 + "px";
+      rootEl.style.top = vh - 110 + "px";
+    }
+    // on phones the canvas scrolls, so the wire layer spans the whole scroll height
+    wires.style.height = "0px";
+    const H = phone ? stage.scrollHeight : vh;
+    wires.style.height = H + "px";
+    wires.setAttribute("viewBox", `0 0 ${vw} ${H}`);
     wires.textContent = "";
+    const st = stage.scrollTop;
+    const local = r => ({ left: r.left, width: r.width, top: r.top + st, bottom: r.bottom + st });
+    const rr = local(rootEl.getBoundingClientRect());
+    const rx = rr.left + rr.width / 2;
 
     // stems: the bundled wires leaving the root toward the bottom edge
     const count = Math.max(3, Math.min(9, nodes.length));
     for (let i = 0; i < count; i++) {
       const o = i - (count - 1) / 2;
-      wires.append(svg("line", { class: "stem", x1: rp.x + o * 5, y1: rr.bottom, x2: rp.x + o * 12, y2: vh + 4 }));
+      wires.append(svg("line", { class: "stem", x1: rx + o * 5, y1: rr.bottom, x2: rx + o * 12, y2: H + 4 }));
     }
 
-    const ordered = nodes.map(n => ({ n, r: n.getBoundingClientRect() })).sort((a, b) => (a.r.left + a.r.width / 2) - (b.r.left + b.r.width / 2));
+    const ordered = nodes.map(n => ({ n, r: local(n.getBoundingClientRect()) })).sort((a, b) => (a.r.left + a.r.width / 2) - (b.r.left + b.r.width / 2));
     ordered.forEach(({ n, r }, i) => {
       const sx = r.left + r.width / 2, sy = r.bottom + 2;
-      const ex = rp.x + (i - (ordered.length - 1) / 2) * Math.min(10, rr.width / Math.max(1, ordered.length)), ey = rr.top - 1;
+      const ex = rx + (i - (ordered.length - 1) / 2) * Math.min(10, rr.width / Math.max(1, ordered.length)), ey = rr.top - 1;
       const dy = Math.max(60, ey - sy);
       const c1y = sy + dy * .55, c2y = ey - dy * .5;
       const d = `M${sx} ${sy}C${sx} ${c1y} ${ex} ${c2y} ${ex} ${ey}`;
@@ -734,12 +798,14 @@ Add Link to grow the first one</p>
   }
 
   window.addEventListener("resize", layoutFloats);
+  if (phoneMQ.addEventListener) phoneMQ.addEventListener("change", layoutFloats);
   if (document.fonts) document.fonts.ready.then(layoutFloats);
 
+  // dragging places flowers on the big-screen canvas; phones show them stacked, so a touch on the label scrolls instead
   function attachDrag(handle, getPos, setPos) {
     let start = null;
     handle.addEventListener("pointerdown", e => {
-      if (e.button !== 0) return;
+      if (e.button !== 0 || phoneMQ.matches) return;
       e.preventDefault();
       handle.setPointerCapture(e.pointerId);
       const p = getPos();
@@ -756,7 +822,7 @@ Add Link to grow the first one</p>
     handle.addEventListener("pointercancel", end);
     handle.addEventListener("keydown", e => {
       const step = e.shiftKey ? 6 : 2, d = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] }[e.key];
-      if (!d) return;
+      if (!d || phoneMQ.matches) return;
       e.preventDefault();
       const p = getPos();
       setPos({ x: clamp(p.x + d[0], 0, 100), y: clamp(p.y + d[1], 0, 100) });
@@ -771,17 +837,16 @@ Add Link to grow the first one</p>
       e.preventDefault(); e.stopPropagation();
       grip.setPointerCapture(e.pointerId);
       const sz = parts.size();
-      const scale = node.offsetWidth ? node.getBoundingClientRect().width / node.offsetWidth : 1;
-      start = { px: e.clientX, py: e.clientY, w: sz.w, h: sz.h, scale };
+      // on the big-screen canvas the node stays centered on its point, so a corner drag grows it by twice the pointer distance
+      start = { px: e.clientX, py: e.clientY, w: sz.w, h: sz.h, k: phoneMQ.matches ? 1 : 2 };
       document.body.classList.add("resizing");
     });
     grip.addEventListener("pointermove", e => {
       if (!start) return;
-      // the node stays centered on its point, so a corner drag grows it by twice the pointer distance
-      const w = start.w + 2 * (e.clientX - start.px) / start.scale;
+      const w = start.w + start.k * (e.clientX - start.px);
       let h = start.h;
       if (parts.heights) {
-        const want = start.h + 2 * (e.clientY - start.py) / start.scale;
+        const want = start.h + start.k * (e.clientY - start.py);
         h = parts.heights.reduce((best, v) => Math.abs(v - want) < Math.abs(best - want) ? v : best, parts.heights[0]);
       }
       parts.setSize(w, h);
@@ -858,6 +923,32 @@ Add Link to grow the first one</p>
   });
   logo.addEventListener("blur", () => { state.title = state.title.trim(); logo.textContent = state.title; titleText.value = state.title; update(); });
   titleText.addEventListener("input", () => { state.title = titleText.value; logo.textContent = state.title; update(); });
+
+  /* ---------- editor: root tag, typed on the page or in the drawer ---------- */
+  [[rtTag, "tag", ident, "rootTag", "Tag name"], [rtAttr, "attr", ident, "rootAttr", "Attribute"], [rtVal, "val", plain, "rootVal", "Attribute value"]]
+    .forEach(([span, key, fix, inputId, label]) => {
+      const input = $(inputId);
+      span.contentEditable = "true";
+      span.spellcheck = false;
+      span.setAttribute("role", "textbox");
+      span.setAttribute("aria-label", "Root tag " + label.toLowerCase());
+      input.value = state[key];
+      span.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); span.blur(); } });
+      span.addEventListener("paste", e => { e.preventDefault(); document.execCommand("insertText", false, fix(e.clipboardData.getData("text/plain") || "")); });
+      span.addEventListener("input", () => {
+        const raw = span.textContent, t = fix(raw);
+        if (t !== raw || span.children.length) { span.textContent = t; getSelection().collapse(span, span.childNodes.length); }
+        state[key] = t;
+        input.value = t;
+        update();
+      });
+      span.addEventListener("blur", () => { state[key] = state[key].trim(); span.textContent = state[key]; input.value = state[key]; update(); });
+      input.addEventListener("input", () => {
+        state[key] = fix(input.value);
+        if (input.value !== state[key]) input.value = state[key];
+        update();
+      });
+    });
 
   /* ---------- editor: background ---------- */
   const bgBox = $("bgSwatches");
